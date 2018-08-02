@@ -14,13 +14,15 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <regex>
 #include "CodeContext.h"
+#include "CGNStatement.h"
 
 #define smart_stype(tclass, type, size, subtype) unique_ptr<SType>(new SType(tclass, type, size, subtype))
 #define smart_sfuncTy(func, rtype, args) unique_ptr<SFunctionType>(new SFunctionType(func, rtype, args))
 #define smart_aliasTy(type) unique_ptr<SAliasType>(new SAliasType(type))
 #define smart_strucTy(type, structure) unique_ptr<SUserType>(new SStructType(type, structure))
-#define smart_classTy(type, structure) unique_ptr<SUserType>(new SClassType(type, structure))
+#define smart_classTy(name, type, structure, args) unique_ptr<SUserType>(new SClassType(name, type, structure, args))
 #define smart_unionTy(type, structure, size) unique_ptr<SUserType>(new SUnionType(type, structure, size))
 #define smart_enumTy(type, structure) unique_ptr<SUserType>(new SEnumType(type, structure))
 #define smart_opaqueTy(type) unique_ptr<SOpaqueType>(new SOpaqueType(type))
@@ -241,9 +243,43 @@ string SEnumType::str(CodeContext* context) const
 	return os.str();
 }
 
-SUserType* SUserType::lookup(CodeContext& context, const string& name)
+SType* SUserType::lookup(CodeContext& context, Token* name, vector<SType*> templateArgs)
 {
-	return context.getTypeManager().lookupUserType(name);
+	bool inTemplate = context.inTemplate(), hasArgs = !templateArgs.empty();
+	
+	if (inTemplate && !hasArgs) {
+		auto type = context.getTemplateArg(name->str);
+		if (!type)
+			return type;
+	}
+
+	auto fullName = name->str;
+	if (hasArgs) {
+		for (auto item : templateArgs)
+			fullName += "_" + item->str(&context);
+		fullName = regex_replace(fullName, regex("[ ,<>]"), "_");
+	}
+	auto type = context.getTypeManager().lookupUserType(fullName);
+	if (!type && hasArgs) {
+		auto templateType = context.getTypeManager().getTemplateType(name->str);
+		if (!templateType)
+			return nullptr;
+
+		auto params = templateType->getTemplateParams();
+		if (params->size() != templateArgs.size()) {
+			context.addError("number of template args doesn't match", name);
+			return nullptr;
+		}
+
+		vector<pair<string, SType*>> templateMappings;
+		for (size_t i = 0; i < templateArgs.size(); i++)
+			templateMappings.push_back({params->at(i)->str, templateArgs[i]});
+
+		auto templateCtx = CodeContext::newForTemplate(context, templateMappings);
+		CGNStatement::run(templateCtx, templateType);
+		type = context.getTypeManager().lookupUserType(fullName);
+	}
+	return type;
 }
 
 string SUserType::lookup(CodeContext& context, SType* type)
@@ -261,9 +297,9 @@ void SUserType::createStruct(CodeContext& context, const string& name, const vec
 	context.getTypeManager().createStruct(name, structure);
 }
 
-SClassType* SUserType::createClass(CodeContext& context, const string& name, const vector<pair<string, SType*>>& structure)
+SClassType* SUserType::createClass(CodeContext& context, const string& name, const vector<pair<string, SType*>>& structure, const vector<SType*>& templateArgs)
 {
-	return context.getTypeManager().createClass(name, structure);
+	return context.getTypeManager().createClass(name, structure, templateArgs);
 }
 
 void SUserType::createUnion(CodeContext& context, const string& name, const vector<pair<string, SType*>>& structure)
@@ -358,7 +394,7 @@ void TypeManager::createStruct(const string& name, const vector<pair<string, STy
 	item = smart_strucTy(buildStruct(name, structure), structure);
 }
 
-SClassType* TypeManager::createClass(const string& name, const vector<pair<string, SType*>>& structure)
+SClassType* TypeManager::createClass(const string& name, const vector<pair<string, SType*>>& structure, const vector<SType*>& templateArgs)
 {
 	SUserPtr& item = usrMap[name];
 	if (!item.get())

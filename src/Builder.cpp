@@ -329,7 +329,7 @@ bool Builder::addMembers(NVariableDeclGroup* group, vector<pair<string, SType*> 
 
 bool Builder::isDeclared(CodeContext& context, Token* name)
 {
-	auto utype = SUserType::lookup(context, name->str);
+	auto utype = SUserType::lookup(context, name, {});
 	if (utype) {
 		context.addError("type with name " + name->str + " already declared", name);
 		return true;
@@ -377,7 +377,7 @@ void Builder::CreateStruct(CodeContext& context, NStructDeclaration::CreateType 
 			SUserType::createUnion(context, structName, structVars);
 			return;
 		case NStructDeclaration::CreateType::CLASS:
-			auto cl = SUserType::createClass(context, structName, structVars);
+			auto cl = SUserType::createClass(context, structName, structVars, context.getTemplateArgs());
 			context.setClass(cl);
 			return;
 		}

@@ -22,7 +22,7 @@
 #include <llvm/ADT/APSInt.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Support/Debug.h>
-#include "BaseNodes.h"
+#include "AST.h"
 
 // forward declaration
 class CodeContext;
@@ -350,7 +350,7 @@ class SUserType : public SType
 	void innerStr(CodeContext* context, stringstream& os) const;
 
 public:
-	static SUserType* lookup(CodeContext& context, const string& name);
+	static SType* lookup(CodeContext& context, Token* name, vector<SType*> templateArgs);
 
 	static string lookup(CodeContext& context, SType* type);
 
@@ -358,7 +358,7 @@ public:
 
 	static void createStruct(CodeContext& context, const string& name, const vector<pair<string, SType*>>& structure);
 
-	static SClassType* createClass(CodeContext& context, const string& name, const vector<pair<string, SType*>>& structure);
+	static SClassType* createClass(CodeContext& context, const string& name, const vector<pair<string, SType*>>& structure, const vector<SType*>& templateArgs);
 
 	static void createUnion(CodeContext& context, const string& name, const vector<pair<string, SType*>>& structure);
 
@@ -422,8 +422,11 @@ class SClassType : public SStructType
 {
 	friend class TypeManager;
 
-	SClassType(StructType* type, const vector<pair<string, SType*>>& structure)
-	: SStructType(type, structure, STRUCT | CLASS) {}
+	string name;
+	vector<SType*> templateArgs;
+
+	SClassType(const string& name, StructType* type, const vector<pair<string, SType*>>& structure, const vector<SType*>& templateArgs)
+	: SStructType(type, structure, STRUCT | CLASS), name(name), templateArgs(templateArgs) {}
 
 public:
 	void addFunction(const string& name, const SFunction& func);
@@ -579,6 +582,9 @@ class TypeManager
 	// function types
 	map<pair<SType*, vector<SType*> >, SFuncPtr> funcMap;
 
+	// template types
+	map<string, NClassDeclaration*> templateMap;
+
 	StructType* buildStruct(const string& name, const vector<pair<string, SType*>>& structure);
 
 public:
@@ -664,11 +670,21 @@ public:
 		return "";
 	}
 
+	void storeTemplate(const string& name, NClassDeclaration* decl)
+	{
+		templateMap[name] = decl;
+	}
+
+	NClassDeclaration* getTemplateType(const string& name)
+	{
+		return templateMap[name];
+	}
+
 	void createAlias(const string& name, SType* type);
 
 	void createStruct(const string& name, const vector<pair<string, SType*>>& structure);
 
-	SClassType* createClass(const string& name, const vector<pair<string, SType*>>& structure);
+	SClassType* createClass(const string& name, const vector<pair<string, SType*>>& structure, const vector<SType*>& templateArgs);
 
 	void createUnion(const string& name, const vector<pair<string, SType*>>& structure);
 
