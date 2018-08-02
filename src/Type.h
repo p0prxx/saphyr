@@ -22,7 +22,7 @@
 #include <llvm/ADT/APSInt.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Support/Debug.h>
-#include "BaseNodes.h"
+#include "AST.h"
 
 // forward declaration
 class CodeContext;
@@ -320,6 +320,49 @@ public:
 		return os.str();
 	}
 
+	virtual string raw()
+	{
+		string s;
+		raw_string_ostream os(s);
+
+		if (isConst())
+			os << "c_";
+
+		if (isArray()) {
+			os << "a";
+			auto s = size();
+			if (s)
+				os << s;
+			os << "_" << subtype->raw();
+		} else if (isPointer()) {
+			os << "p_" << subtype->raw();
+		} else if (isVec()) {
+			os << "v" << size() << "_" << subtype->raw();
+		} else {
+			if (isDouble()) {
+				os << "d";
+			} else if (isFloating()) {
+				os << "f";
+			} else if (isBool()) {
+				os << "b";
+			} else if (isVoid()) {
+				os << "v";
+			} else if (isInteger()) {
+				if (isUnsigned())
+					os << "u";
+				else
+					os << "i";
+				os << size();
+			} else if (isAuto()) {
+				os << "x";
+			} else {
+				os << "e" << tclass << "_";
+				ltype->print(os);
+			}
+		}
+		return os.str();
+	}
+
 	void dump() const;
 
 	virtual ~SType()
@@ -346,13 +389,28 @@ protected:
 	void innerStr(CodeContext* context, stringstream& os) const;
 
 public:
-	static SUserType* lookup(CodeContext& context, const string& name);
+	string raw()
+	{
+		return name;
+	}
+
+	static string raw(const string& name, const vector<SType*>& templateArgs)
+	{
+		auto ret = name;
+		for (auto item : templateArgs)
+			ret += "_" + item->raw();
+		return ret;
+	}
+
+	static bool isDeclared(CodeContext& context, const string& name, const vector<SType*>& templateArgs);
+
+	static SType* lookup(CodeContext& context, Token* name, vector<SType*> templateArgs);
 
 	static void createAlias(CodeContext& context, const string& name, SType* type);
 
 	static void createStruct(CodeContext& context, const string& name, const vector<pair<string, SType*>>& structure);
 
-	static SClassType* createClass(CodeContext& context, const string& name, const vector<pair<string, SType*>>& structure);
+	static SClassType* createClass(CodeContext& context, const string& name, const vector<pair<string, SType*>>& structure, const vector<SType*>& templateArgs);
 
 	static void createUnion(CodeContext& context, const string& name, const vector<pair<string, SType*>>& structure);
 
@@ -374,6 +432,11 @@ public:
 	{
 		return subtype->str(context);
 	}
+
+	string raw()
+	{
+		return subtype->raw();
+	}
 };
 
 class SStructType : public SUserType
@@ -386,8 +449,9 @@ class SStructType : public SUserType
 
 protected:
 	container items;
+	vector<SType*> templateArgs;
 
-	SStructType(const string& name, StructType* type, const vector<pair<string, SType*>>& structure, int ctype = STRUCT);
+	SStructType(const string& name, StructType* type, const vector<pair<string, SType*>>& structure, const vector<SType*>& templateArgs, int ctype = STRUCT);
 
 	SType* copy()
 	{
@@ -400,6 +464,14 @@ public:
 	pair<int, RValue>* getItem(const string& name);
 
 	string str(CodeContext* context = nullptr) const;
+
+	string raw()
+	{
+		auto raw = name;
+		for (auto item : templateArgs)
+			raw += "_" + item->raw();
+		return raw;
+	}
 
 	const_iterator begin() const
 	{
@@ -416,8 +488,8 @@ class SClassType : public SStructType
 {
 	friend class TypeManager;
 
-	SClassType(const string& name, StructType* type, const vector<pair<string, SType*>>& structure)
-	: SStructType(name, type, structure, STRUCT | CLASS) {}
+	SClassType(const string& name, StructType* type, const vector<pair<string, SType*>>& structure, const vector<SType*>& templateArgs)
+	: SStructType(name, type, structure, templateArgs, STRUCT | CLASS) {}
 
 public:
 	void addFunction(const string& name, const SFunction& func);
@@ -540,6 +612,15 @@ public:
 		os << ")" << returnTy()->str(context);
 		return os.str();
 	}
+
+	string raw()
+	{
+		string raw = "m_";
+		for (auto item : params)
+			raw += "_" + item->raw();
+		raw += "_" + returnTy()->raw();
+		return raw;
+	}
 };
 
 class TypeManager
@@ -572,6 +653,9 @@ class TypeManager
 
 	// function types
 	map<pair<SType*, vector<SType*> >, SFuncPtr> funcMap;
+
+	// template types
+	map<string, NClassDeclaration*> templateMap;
 
 	StructType* buildStruct(const string& name, const vector<pair<string, SType*>>& structure);
 
@@ -649,11 +733,21 @@ public:
 		return usrMap[name].get();
 	}
 
+	void storeTemplate(const string& name, NClassDeclaration* decl)
+	{
+		templateMap[name] = decl;
+	}
+
+	NClassDeclaration* getTemplateType(const string& name)
+	{
+		return templateMap[name];
+	}
+
 	void createAlias(const string& name, SType* type);
 
 	void createStruct(const string& name, const vector<pair<string, SType*>>& structure);
 
-	SClassType* createClass(const string& name, const vector<pair<string, SType*>>& structure);
+	SClassType* createClass(const string& name, const string& rawName, const vector<pair<string, SType*>>& structure, const vector<SType*>& templateArgs);
 
 	void createUnion(const string& name, const vector<pair<string, SType*>>& structure);
 

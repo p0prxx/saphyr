@@ -203,6 +203,10 @@ void CGNStatement::visitNMemberInitializer(NMemberInitializer* stm)
 
 void CGNStatement::visitNClassDeclaration(NClassDeclaration* stm)
 {
+	if (stm->getTemplateParams() && context.getTemplateArgs().empty()) {
+		context.storeTemplate(stm->getName()->str, stm);
+		return;
+	}
 	Builder::CreateClass(context, stm, [=](int structIdx) {
 		visit(stm->getMembers()->at(structIdx));
 		if (!context.getClass())

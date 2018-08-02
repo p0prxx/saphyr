@@ -436,9 +436,21 @@ public:
 
 class NUserType : public NNamedType
 {
+	NDataTypeList* templateArgs;
+
 public:
-	explicit NUserType(Token* name)
-	: NNamedType(name) {}
+	explicit NUserType(Token* name, NDataTypeList* templateArgs = nullptr)
+	: NNamedType(name), templateArgs(templateArgs) {}
+
+	NDataTypeList* getTemplateArgs()
+	{
+		return templateArgs;
+	}
+
+	~NUserType()
+	{
+		delete templateArgs;
+	}
 
 	ADD_ID(NUserType)
 };
@@ -988,11 +1000,12 @@ typedef NodeList<NMemberInitializer> NInitializerList;
 class NClassDeclaration : public NDeclaration
 {
 	NClassMemberList* list;
+	NIdentifierList* templateParams;
 	NAttributeList* attrs;
 
 public:
-	NClassDeclaration(Token* name, NClassMemberList* list, NAttributeList* attrs)
-	: NDeclaration(name), list(list), attrs(attrs)
+	NClassDeclaration(Token* name, NClassMemberList* list, NIdentifierList* templateParams, NAttributeList* attrs)
+	: NDeclaration(name), list(list), templateParams(templateParams), attrs(attrs)
 	{
 		if (list) {
 			for (auto i : *list)
@@ -1012,6 +1025,11 @@ public:
 		list = members;
 	}
 
+	NIdentifierList* getTemplateParams()
+	{
+		return templateParams;
+	}
+
 	NAttributeList* getAttrs() const
 	{
 		return attrs;
@@ -1021,6 +1039,7 @@ public:
 	{
 		delete list;
 		delete attrs;
+		delete templateParams;
 	}
 
 	ADD_ID(NClassDeclaration)
