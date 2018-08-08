@@ -377,7 +377,8 @@ void Builder::CreateStruct(CodeContext& context, NStructDeclaration::CreateType 
 			SUserType::createUnion(context, structName, structVars);
 			return;
 		case NStructDeclaration::CreateType::CLASS:
-			SUserType::createClass(context, structName, structVars);
+			auto cl = SUserType::createClass(context, structName, structVars);
+			context.setClass(cl);
 			return;
 		}
 	}
